@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import InterfaceList from './components/InterfaceList';
 import ClientList from './components/ClientList';
+import NetworkTopology from './components/NetworkTopology';
 import { AppView, NetworkInterface, PPPoEClient, SystemStats } from './types';
 import { 
   generateInitialInterfaces, 
@@ -42,6 +43,8 @@ const App: React.FC = () => {
         return <InterfaceList interfaces={interfaces} />;
       case AppView.PPPOE:
         return <ClientList clients={clients} />;
+      case AppView.TOPOLOGY:
+        return <NetworkTopology interfaces={interfaces} clients={clients} />;
       case AppView.SETTINGS:
         return (
           <div className="flex flex-col items-center justify-center h-[50vh] text-slate-500">
@@ -70,7 +73,7 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-auto bg-slate-950 relative">
         {/* Top bar mobile overlay could go here */}
         
-        <div className="p-8 max-w-7xl mx-auto">
+        <div className="p-8 max-w-7xl mx-auto h-full">
            {renderContent()}
         </div>
       </main>
