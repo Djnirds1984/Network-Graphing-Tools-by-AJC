@@ -1,0 +1,5 @@
+{
+  "name": "Network Graphing Tools",
+  "description": "Real-time network visualization dashboard for MikroTik routers. Monitors Ethernet ports and PPPoE clients with AI-powered traffic analysis.",
+  "requestFramePermissions": []
+}
