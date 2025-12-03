@@ -1,78 +1,244 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import InterfaceList from './components/InterfaceList';
 import ClientList from './components/ClientList';
 import NetworkTopology from './components/NetworkTopology';
-import { AppView, NetworkInterface, PPPoEClient, SystemStats } from './types';
+import RouterManager from './components/RouterManager';
+import AuthPage from './components/AuthPage';
+import { AppView, NetworkInterface, PPPoEClient, SystemStats, Tenant, RouterDevice, User } from './types';
 import { 
+  generateTenants,
+  generateRouters,
   generateInitialInterfaces, 
   generateInitialClients, 
+  generateSystemStats,
   updateInterfaces, 
   updateClients, 
-  getSystemStats 
+  updateSystemStats
 } from './services/mockDataService';
+import { getStoredTenants, getStoredRouters, logout } from './services/authService';
 
 const App: React.FC = () => {
+  // --- Auth State ---
+  const [user, setUser] = useState<User | null>(null);
+
+  // --- View State ---
   const [currentView, setView] = useState<AppView>(AppView.DASHBOARD);
   
-  // State for data
-  const [interfaces, setInterfaces] = useState<NetworkInterface[]>(generateInitialInterfaces());
-  const [clients, setClients] = useState<PPPoEClient[]>(generateInitialClients());
-  const [sysStats, setSysStats] = useState<SystemStats>(getSystemStats());
+  // --- Structural Data ---
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [routers, setRouters] = useState<RouterDevice[]>([]);
+  
+  // Selection State
+  const [selectedRouterId, setSelectedRouterId] = useState<string>('');
 
-  // Simulation Loop
+  // --- Dynamic Data ---
+  const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
+  const [clients, setClients] = useState<PPPoEClient[]>([]);
+  const [sysStatsMap, setSysStatsMap] = useState<Record<string, SystemStats>>({});
+
+  // 1. Initial Data Loading (Static Defaults + Stored User Data)
   useEffect(() => {
+    const defaultTenants = generateTenants();
+    const defaultRouters = generateRouters();
+    const storedTenants = getStoredTenants();
+    const storedRouters = getStoredRouters();
+
+    // Merge default (mock) data with locally stored (registered) data
+    const allTenants = [...defaultTenants, ...storedTenants];
+    const allRouters = [...defaultRouters, ...storedRouters];
+
+    setTenants(allTenants);
+    setRouters(allRouters);
+
+    // Initial Population of Metrics for ALL routers
+    const initialInterfaces = generateInitialInterfaces(allRouters);
+    const initialClients = generateInitialClients(allRouters);
+    const initialStats = generateSystemStats(allRouters);
+
+    setInterfaces(initialInterfaces);
+    setClients(initialClients);
+    setSysStatsMap(initialStats);
+  }, []); // Run once on mount
+
+  // 2. Set Default Selection Logic
+  useEffect(() => {
+    if (user && routers.length > 0) {
+      if (!selectedRouterId) {
+        // If Admin, select first available router
+        if (user.tenantId === 'admin') {
+          setSelectedRouterId(routers[0].id);
+        } else {
+          // If Tenant User, select THEIR first router
+          const myRouters = routers.filter(r => r.tenantId === user.tenantId);
+          if (myRouters.length > 0) {
+            setSelectedRouterId(myRouters[0].id);
+          }
+        }
+      }
+    }
+  }, [user, routers, selectedRouterId]);
+
+  // 3. Simulation Loop
+  useEffect(() => {
+    if (!user) return; // Only run sim if logged in
+
     const intervalId = setInterval(() => {
       setInterfaces(prev => updateInterfaces(prev));
       setClients(prev => updateClients(prev));
-      // Randomly update system stats occasionally
-      if (Math.random() > 0.8) {
-        setSysStats(getSystemStats());
-      }
-    }, 1500); // Update every 1.5 seconds
+      setSysStatsMap(prev => updateSystemStats(prev));
+    }, 1500);
 
     return () => clearInterval(intervalId);
-  }, []);
+  }, [user]);
+
+  // --- Handlers ---
+  
+  const handleLogin = (loggedInUser: User) => {
+    setUser(loggedInUser);
+  };
+
+  const handleRegisterSuccess = (newTenant: Tenant, newRouter: RouterDevice) => {
+    // Add new data to state immediately so the new user can see it
+    const updatedTenants = [...tenants, newTenant];
+    const updatedRouters = [...routers, newRouter];
+    setTenants(updatedTenants);
+    setRouters(updatedRouters);
+    
+    // Also generate initial mock data for this new router
+    const newInterfaces = generateInitialInterfaces([newRouter]);
+    const newClients = generateInitialClients([newRouter]); // Likely empty or few default
+    const newStats = generateSystemStats([newRouter]);
+
+    setInterfaces(prev => [...prev, ...newInterfaces]);
+    setClients(prev => [...prev, ...newClients]);
+    setSysStatsMap(prev => ({...prev, ...newStats}));
+    
+    // Auto-select the new router
+    setSelectedRouterId(newRouter.id);
+  };
+
+  const handleLogout = () => {
+    logout();
+    setUser(null);
+    setSelectedRouterId('');
+  };
+
+  const handleAddRouter = (newRouter: RouterDevice) => {
+    // Update local state
+    setRouters(prev => [...prev, newRouter]);
+    
+    // Generate initial metrics for the new device
+    const newInterfaces = generateInitialInterfaces([newRouter]);
+    const newClients = generateInitialClients([newRouter]);
+    const newStats = generateSystemStats([newRouter]);
+
+    setInterfaces(prev => [...prev, ...newInterfaces]);
+    setClients(prev => [...prev, ...newClients]);
+    setSysStatsMap(prev => ({...prev, ...newStats}));
+
+    // Optionally switch to the new router
+    setSelectedRouterId(newRouter.id);
+  };
+
+  // --- Filtering Logic for Multi-Tenancy ---
+
+  // Filter Tenants visible to current user
+  const visibleTenants = useMemo(() => {
+    if (!user) return [];
+    if (user.tenantId === 'admin') return tenants;
+    return tenants.filter(t => t.id === user.tenantId);
+  }, [tenants, user]);
+
+  // Filter Routers visible to current user
+  const visibleRouters = useMemo(() => {
+    if (!user) return [];
+    if (user.tenantId === 'admin') return routers;
+    return routers.filter(r => r.tenantId === user.tenantId);
+  }, [routers, user]);
+
+  // Filter Metrics based on selected router
+  const activeInterfaces = useMemo(() => 
+    interfaces.filter(i => i.routerId === selectedRouterId), 
+  [interfaces, selectedRouterId]);
+
+  const activeClients = useMemo(() => 
+    clients.filter(c => c.routerId === selectedRouterId), 
+  [clients, selectedRouterId]);
+
+  const activeSysStats = sysStatsMap[selectedRouterId] || {
+    routerId: selectedRouterId,
+    cpuLoad: 0,
+    memoryUsage: 0,
+    uptime: '-',
+    boardName: 'Loading...',
+    version: '-'
+  };
+
+  // --- Render ---
+
+  if (!user) {
+    return <AuthPage onLogin={handleLogin} onRegisterSuccess={handleRegisterSuccess} />;
+  }
 
   const renderContent = () => {
     switch (currentView) {
       case AppView.DASHBOARD:
-        return <Dashboard interfaces={interfaces} clients={clients} sysStats={sysStats} />;
+        return <Dashboard interfaces={activeInterfaces} clients={activeClients} sysStats={activeSysStats} />;
       case AppView.INTERFACES:
-        return <InterfaceList interfaces={interfaces} />;
+        return <InterfaceList interfaces={activeInterfaces} />;
       case AppView.PPPOE:
-        return <ClientList clients={clients} />;
+        return <ClientList clients={activeClients} />;
       case AppView.TOPOLOGY:
-        return <NetworkTopology interfaces={interfaces} clients={clients} />;
+        return <NetworkTopology interfaces={activeInterfaces} clients={activeClients} />;
+      case AppView.ROUTERS:
+        return (
+          <RouterManager 
+            routers={visibleRouters} 
+            onAddRouter={handleAddRouter} 
+            tenantId={user.tenantId} 
+          />
+        );
       case AppView.SETTINGS:
         return (
-          <div className="flex flex-col items-center justify-center h-[50vh] text-slate-500">
-             <div className="bg-slate-900 p-8 rounded-xl border border-slate-800 max-w-lg text-center">
-                <svg className="w-16 h-16 mx-auto mb-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/></svg>
-                <h3 className="text-xl font-bold text-slate-200 mb-2">Settings & Configuration</h3>
-                <p className="mb-4">
-                   This app is currently running in <strong>Simulation Mode</strong>. 
-                   To connect to a live RouterOS device, a backend proxy service is required to handle SNMP or API requests due to browser security restrictions.
+          <div className="flex flex-col items-center justify-center h-[50vh] text-slate-500 animate-fade-in">
+             <div className="bg-slate-900 p-8 rounded-xl border border-slate-800 max-w-lg text-center shadow-lg">
+                <div className="w-16 h-16 mx-auto mb-4 bg-slate-800 rounded-full flex items-center justify-center text-slate-400">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-slate-200 mb-1">Account Settings</h3>
+                <p className="text-sm text-cyan-400 mb-4">{user.email}</p>
+                <p className="mb-6 text-sm">
+                   Role: <strong className="uppercase">{user.role}</strong><br/>
+                   Organization: <strong>{visibleTenants.find(t => t.id === user.tenantId)?.name || 'N/A'}</strong>
                 </p>
-                <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 text-sm">
-                   Configure API Endpoint
+                <button 
+                  onClick={handleLogout}
+                  className="px-6 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-sm border border-red-500/50 transition-colors"
+                >
+                  Sign Out
                 </button>
              </div>
           </div>
         );
       default:
-        return <Dashboard interfaces={interfaces} clients={clients} sysStats={sysStats} />;
+        return <Dashboard interfaces={activeInterfaces} clients={activeClients} sysStats={activeSysStats} />;
     }
   };
 
   return (
     <div className="flex h-screen w-full bg-slate-950 text-slate-200 font-sans selection:bg-cyan-500/30">
-      <Sidebar currentView={currentView} setView={setView} />
+      <Sidebar 
+        currentView={currentView} 
+        setView={setView} 
+        tenants={visibleTenants}
+        routers={visibleRouters}
+        selectedRouterId={selectedRouterId}
+        onSelectRouter={setSelectedRouterId}
+      />
       
       <main className="flex-1 overflow-auto bg-slate-950 relative">
-        {/* Top bar mobile overlay could go here */}
-        
         <div className="p-8 max-w-7xl mx-auto h-full">
            {renderContent()}
         </div>
