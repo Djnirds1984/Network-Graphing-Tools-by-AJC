@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { login, register } from '../services/authService';
-import { User, Tenant, RouterDevice } from '../types';
+import { User, Tenant } from '../types';
 
 interface AuthPageProps {
   onLogin: (user: User) => void;
-  onRegisterSuccess: (tenant: Tenant, router: RouterDevice) => void;
+  onRegisterSuccess: (tenant: Tenant) => void;
 }
 
 const AuthPage: React.FC<AuthPageProps> = ({ onLogin, onRegisterSuccess }) => {
@@ -31,9 +31,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, onRegisterSuccess }) => {
         if (!name || !orgName) {
           throw new Error("Please fill in all fields.");
         }
-        const { user, tenant, router } = await register(name, email, password, orgName);
-        // After register, update App state with new data
-        onRegisterSuccess(tenant, router);
+        const { user, tenant } = await register(name, email, password, orgName);
+        onRegisterSuccess(tenant);
         onLogin(user);
       }
     } catch (err: any) {
