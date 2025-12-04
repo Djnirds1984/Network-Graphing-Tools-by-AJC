@@ -137,9 +137,18 @@ app.get('/api/routers/:id/stats', async (req, res) => {
         Promise.resolve([]) 
       ]);
 
-      if (ifaceRes.status === 'fulfilled') interfacesRaw = ifaceRes.value;
-      if (resourceRes.status === 'fulfilled') resourceRaw = resourceRes.value[0] || {};
-      if (pppRes.status === 'fulfilled') activePppRaw = pppRes.value;
+      if (ifaceRes.status === 'fulfilled') {
+        const v = ifaceRes.value;
+        interfacesRaw = Array.isArray(v) ? v : (v?.items || v?.data || []);
+      }
+      if (resourceRes.status === 'fulfilled') {
+        const v = resourceRes.value;
+        resourceRaw = Array.isArray(v) ? (v[0] || {}) : (v || {});
+      }
+      if (pppRes.status === 'fulfilled') {
+        const v = pppRes.value;
+        activePppRaw = Array.isArray(v) ? v : (v?.items || []);
+      }
 
     } 
     // --- STRATEGY: LEGACY API (ROS 6/7) ---
@@ -181,31 +190,35 @@ app.get('/api/routers/:id/stats', async (req, res) => {
     // --- Transform Data for Frontend ---
     
     // 1. System Stats
+    const totalMem = parseInt(resourceRaw['total-memory'] ?? resourceRaw.total_memory ?? '0');
+    const freeMem = parseInt(resourceRaw['free-memory'] ?? resourceRaw.free_memory ?? '0');
+    const cpuLoad = parseInt(resourceRaw['cpu-load'] ?? resourceRaw.cpu_load ?? '0') || 0;
+    const memoryUsage = totalMem && freeMem ? Math.floor(((totalMem - freeMem) / totalMem) * 100) : 0;
     const sysStats = {
       routerId: router.id,
-      cpuLoad: parseInt(resourceRaw['cpu-load'] || 0),
-      memoryUsage: Math.floor(((parseInt(resourceRaw['total-memory']) - parseInt(resourceRaw['free-memory'])) / parseInt(resourceRaw['total-memory'])) * 100) || 0,
-      uptime: resourceRaw['uptime'] || 'unknown',
-      boardName: resourceRaw['board-name'] || router.model || 'MikroTik',
-      version: resourceRaw['version'] || router.version || 'ROS'
+      cpuLoad,
+      memoryUsage,
+      uptime: resourceRaw['uptime'] || resourceRaw.uptime || 'unknown',
+      boardName: resourceRaw['board-name'] || resourceRaw['board_name'] || resourceRaw.boardName || router.model || 'MikroTik',
+      version: resourceRaw['version'] || resourceRaw.version || router.version || 'ROS'
     };
 
     // 2. Interfaces
-    const interfaces = interfacesRaw.map((iface, idx) => {
-        // API returns bps, convert to Mbps
-        const rxBps = parseInt(iface['rx-bits-per-second'] || 0);
-        const txBps = parseInt(iface['tx-bits-per-second'] || 0);
-        
+    const interfaces = (Array.isArray(interfacesRaw) ? interfacesRaw : []).map((iface, idx) => {
+        const rxBps = parseInt(iface['rx-bits-per-second'] ?? '0');
+        const txBps = parseInt(iface['tx-bits-per-second'] ?? '0');
+        const name = iface.name || iface['name'] || `if-${idx}`;
+        const running = iface.running === 'true' || iface.running === true;
         return {
           id: `${router.id}-if-${idx}`,
           routerId: router.id,
-          name: iface.name,
+          name,
           type: iface.type || 'ethernet',
           mac: iface['mac-address'] || '00:00:00:00:00:00',
-          status: (iface.running === 'true' || iface.running === true) ? 'running' : 'link-down',
-          currentTx: parseFloat((txBps / 1000000).toFixed(2)),
-          currentRx: parseFloat((rxBps / 1000000).toFixed(2)),
-          history: [] // History is managed by frontend accumulation
+          status: running ? 'running' : 'link-down',
+          currentTx: parseFloat(((txBps || 0) / 1000000).toFixed(2)),
+          currentRx: parseFloat(((rxBps || 0) / 1000000).toFixed(2)),
+          history: []
         };
     });
 
@@ -246,12 +259,12 @@ app.post('/api/test-connection', async (req, res) => {
     let result = {};
     if (method === 'rest') {
        const data = await fetchRestData(tempRouter, 'system/resource');
-       const resData = data[0];
-       result = { model: resData['board-name'], version: resData['version'] };
+       const resData = Array.isArray(data) ? (data[0] || {}) : (data || {});
+       result = { model: resData['board-name'] || 'MikroTik', version: resData['version'] || 'ROS' };
     } else {
        const data = await fetchApiData(tempRouter, '/system/resource/print');
-       const resData = data[0];
-       result = { model: resData['board-name'], version: resData['version'] };
+       const resData = (Array.isArray(data) ? data[0] : data) || {};
+       result = { model: resData['board-name'] || 'MikroTik', version: resData['version'] || 'ROS' };
     }
     res.json({ success: true, ...result });
   } catch (err) {
