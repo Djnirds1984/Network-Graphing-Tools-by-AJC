@@ -22,6 +22,20 @@
       }
     </style>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      try {
+        var el = document.createElement('div');
+        el.className = 'hidden';
+        document.body.appendChild(el);
+        var display = getComputedStyle(el).display;
+        el.remove();
+        if (display !== 'none') {
+          console.warn('Tailwind CSS not detected. The UI may look unstyled (white background, oversized icons). Serve the built dist/ output or include the Tailwind CDN.');
+        }
+      } catch (e) {}
+    });
+  </script>
 </head>
   <body class="bg-slate-950 text-slate-200 antialiased overflow-hidden" style="background:#0f172a;color:#e2e8f0">
     <div id="root"></div>
