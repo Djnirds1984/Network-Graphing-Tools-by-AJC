@@ -176,18 +176,30 @@ app.get('/api/routers/:id/stats', async (req, res) => {
     // --- STRATEGY: LEGACY API (ROS 6/7) ---
     else {
       // Sequential or Parallel Promise
-      interfacesRaw = await fetchApiData(router, '/interface/print');
+      try {
+        interfacesRaw = await fetchApiData(router, '/interface/print');
+      } catch (e) {
+        interfacesRaw = [];
+      }
       
-      const resArr = await fetchApiData(router, '/system/resource/print');
-      resourceRaw = resArr[0] || {};
+      try {
+        const resArr = await fetchApiData(router, '/system/resource/print');
+        resourceRaw = Array.isArray(resArr) ? (resArr[0] || {}) : (resArr || {});
+      } catch (e) {
+        resourceRaw = {};
+      }
       
-      activePppRaw = await fetchApiData(router, '/ppp/active/print');
+      try {
+        activePppRaw = await fetchApiData(router, '/ppp/active/print');
+      } catch (e) {
+        activePppRaw = [];
+      }
       
       // Get Traffic Monitor (Snapshot) per interface
       try {
         const updated = [];
         for (const i of interfacesRaw) {
-          const trafficCmd = `/interface/monitor-traffic\n=interface=${i.name}\n=once=yes`;
+          const trafficCmd = `/interface/monitor-traffic\n=interface=${i.name}\n=once=`;
           const res = await fetchApiData(router, trafficCmd);
           const t = Array.isArray(res) ? (res[0] || {}) : (res || {});
           updated.push(t && (t['rx-bits-per-second'] !== undefined || t['tx-bits-per-second'] !== undefined) ? { ...i, ...t } : i);
