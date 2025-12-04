@@ -7,7 +7,16 @@ import NetworkTopology from './components/NetworkTopology';
 import RouterManager from './components/RouterManager';
 import AuthPage from './components/AuthPage';
 import { AppView, NetworkInterface, PPPoEClient, SystemStats, Tenant, RouterDevice, User, TrafficPoint } from './types';
-
+import { 
+  generateTenants,
+  generateRouters,
+  generateInitialInterfaces, 
+  generateInitialClients, 
+  generateSystemStats,
+  updateInterfaces, 
+  updateClients, 
+  updateSystemStats
+} from './services/mockDataService';
 import { getStoredTenants, getStoredRouters, addStoredRouter, logout } from './services/authService';
 import { apiService } from './services/apiService';
 
@@ -36,14 +45,27 @@ const App: React.FC = () => {
   
   // 1. Initial Data Loading (Static Defaults + Stored User Data)
   useEffect(() => {
+    const defaultTenants = generateTenants();
+    const defaultRouters = generateRouters();
     const storedTenants = getStoredTenants();
     const storedRouters = getStoredRouters();
-    setTenants(storedTenants);
-    setRouters(storedRouters);
-    setInterfaces([]);
-    setClients([]);
-    setSysStatsMap({});
-  }, []);
+
+    // Merge default (mock) data with locally stored (registered) data
+    const allTenants = [...defaultTenants, ...storedTenants];
+    const allRouters = [...defaultRouters, ...storedRouters];
+
+    setTenants(allTenants);
+    setRouters(allRouters);
+
+    // Initial Population of Metrics for ALL routers
+    const initialInterfaces = generateInitialInterfaces(allRouters);
+    const initialClients = generateInitialClients(allRouters);
+    const initialStats = generateSystemStats(allRouters);
+
+    setInterfaces(initialInterfaces);
+    setClients(initialClients);
+    setSysStatsMap(initialStats);
+  }, []); // Run once on mount
 
   // 2. Set Default Selection Logic
   useEffect(() => {
@@ -123,7 +145,10 @@ const App: React.FC = () => {
         }
 
       } else {
-        return;
+        // --- MOCK MODE (Demo) ---
+        setInterfaces(prev => updateInterfaces(prev));
+        setClients(prev => updateClients(prev));
+        setSysStatsMap(prev => updateSystemStats(prev));
       }
     };
 
@@ -132,7 +157,7 @@ const App: React.FC = () => {
     const intervalId = setInterval(fetchData, intervalTime);
 
     return () => clearInterval(intervalId);
-  }, [user, selectedRouterId, routers]);
+  }, [user, selectedRouterId]);
 
   // --- Handlers ---
   
@@ -140,8 +165,23 @@ const App: React.FC = () => {
     setUser(loggedInUser);
   };
 
-  const handleRegisterSuccess = (newTenant: Tenant) => {
-    setTenants(prev => [...prev, newTenant]);
+  const handleRegisterSuccess = (newTenant: Tenant, newRouter: RouterDevice) => {
+    // Add new data to state immediately so the new user can see it
+    const updatedTenants = [...tenants, newTenant];
+    const updatedRouters = [...routers, newRouter];
+    setTenants(updatedTenants);
+    setRouters(updatedRouters);
+    
+    // Register the router with the backend if possible (blind fire)
+    // Note: In a real app, 'register' would happen on the backend, not client-side local storage.
+    apiService.addRouter(newRouter);
+
+    // Initial placeholder data
+    const initialStats = generateSystemStats([newRouter]);
+    setSysStatsMap(prev => ({...prev, ...initialStats}));
+    
+    // Auto-select the new router
+    setSelectedRouterId(newRouter.id);
   };
 
   const handleLogout = () => {
