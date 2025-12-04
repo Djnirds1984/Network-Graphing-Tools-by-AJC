@@ -266,18 +266,35 @@ app.get('/api/routers/:id/stats', async (req, res) => {
         };
     });
 
-    // 3. PPPoE Clients
-    const clients = activePppRaw.map((ppp, idx) => ({
-      id: `${router.id}-ppp-${idx}`,
-      routerId: router.id,
-      username: ppp.name,
-      ipAddress: ppp.address,
-      uptime: ppp.uptime,
-      callerId: ppp['caller-id'] || 'N/A',
-      currentTx: 0, // Basic PPP print doesn't give rate. Requires queue monitoring.
-      currentRx: 0,
-      history: []
-    }));
+    // 3. PPPoE Clients with live rates
+    const clientRates = {};
+    try {
+      for (const ppp of activePppRaw) {
+        const ifaceName = ppp.interface || `pppoe-${ppp.name}`;
+        const cmd = `/interface/monitor-traffic\n=interface=${ifaceName}\n=once=`;
+        const res = await fetchApiData(router, cmd);
+        const t = Array.isArray(res) ? (res[0] || {}) : (res || {});
+        clientRates[ppp.name] = {
+          rxBps: parseInt(t['rx-bits-per-second'] ?? '0'),
+          txBps: parseInt(t['tx-bits-per-second'] ?? '0')
+        };
+      }
+    } catch (e) {}
+
+    const clients = activePppRaw.map((ppp, idx) => {
+      const rates = clientRates[ppp.name] || { rxBps: 0, txBps: 0 };
+      return {
+        id: `${router.id}-ppp-${idx}`,
+        routerId: router.id,
+        username: ppp.name,
+        ipAddress: ppp.address,
+        uptime: ppp.uptime,
+        callerId: ppp['caller-id'] || 'N/A',
+        currentTx: parseFloat(((rates.txBps || 0) / 1000000).toFixed(2)),
+        currentRx: parseFloat(((rates.rxBps || 0) / 1000000).toFixed(2)),
+        history: []
+      };
+    });
 
     res.json({
       sysStats,

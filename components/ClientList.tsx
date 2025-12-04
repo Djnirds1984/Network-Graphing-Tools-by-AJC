@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PPPoEClient } from '../types';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import NetworkGraph from './NetworkGraph';
@@ -15,6 +15,13 @@ const ClientList: React.FC<ClientListProps> = ({ clients }) => {
     c.username.toLowerCase().includes(searchTerm.toLowerCase()) || 
     c.ipAddress.includes(searchTerm)
   );
+
+  useEffect(() => {
+    if (selectedClient) {
+      const latest = clients.find(c => c.id === selectedClient.id);
+      if (latest) setSelectedClient(latest);
+    }
+  }, [clients]);
 
   return (
     <div className="space-y-6 relative">
@@ -75,8 +82,8 @@ const ClientList: React.FC<ClientListProps> = ({ clients }) => {
                      <div className="h-10 w-full pointer-events-none">
                        <ResponsiveContainer width="100%" height="100%">
                          <AreaChart data={client.history}>
-                            <Area type="monotone" dataKey="rx" stroke="#10b981" fill="#10b981" fillOpacity={0.2} strokeWidth={1} isAnimationActive={false} />
-                            <Area type="monotone" dataKey="tx" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.2} strokeWidth={1} isAnimationActive={false} />
+                            <Area type="monotone" dataKey="rx" stroke="#10b981" fill="#10b981" fillOpacity={0.2} strokeWidth={1} isAnimationActive={true} animationDuration={400} />
+                            <Area type="monotone" dataKey="tx" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.2} strokeWidth={1} isAnimationActive={true} animationDuration={400} />
                          </AreaChart>
                        </ResponsiveContainer>
                      </div>
