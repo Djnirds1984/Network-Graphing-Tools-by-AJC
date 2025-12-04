@@ -92,6 +92,22 @@ const tryApiResource = async (router) => {
   throw lastError || new Error('API connection failed');
 };
 
+// Generic: Attempt legacy API command on common ports (8728/8729)
+const tryApiCmd = async (router, commandString) => {
+  const attempts = [];
+  const base = { ...router };
+  attempts.push({ ...base, port: base.port === '8728' || base.port === '8729' ? base.port : '8728' });
+  attempts.push({ ...base, port: '8729' });
+  let lastError;
+  for (const r of attempts) {
+    try {
+      const data = await fetchApiData(r, commandString);
+      return data;
+    } catch (e) { lastError = e; }
+  }
+  throw lastError || new Error('API command failed');
+};
+
 // --- Helper: Normalize Interface Data ---
 const normalizeInterfaces = (routerId, rawData) => {
   return rawData.map((iface, idx) => ({
@@ -172,6 +188,17 @@ app.get('/api/routers/:id/stats', async (req, res) => {
         activePppRaw = Array.isArray(v) ? v : (v?.items || []);
       }
 
+      // Supplement live rates via legacy API monitor-traffic
+      try {
+        const updated = [];
+        for (const i of interfacesRaw) {
+          const res = await tryApiCmd(router, `/interface/monitor-traffic\n=interface=${i.name}\n=once=`);
+          const t = Array.isArray(res) ? (res[0] || {}) : (res || {});
+          updated.push(t && (t['rx-bits-per-second'] !== undefined || t['tx-bits-per-second'] !== undefined) ? { ...i, ...t } : i);
+        }
+        interfacesRaw = updated;
+      } catch (e) {}
+
     } 
     // --- STRATEGY: LEGACY API (ROS 6/7) ---
     else {
@@ -200,7 +227,7 @@ app.get('/api/routers/:id/stats', async (req, res) => {
         const updated = [];
         for (const i of interfacesRaw) {
           const trafficCmd = `/interface/monitor-traffic\n=interface=${i.name}\n=once=`;
-          const res = await fetchApiData(router, trafficCmd);
+          const res = await tryApiCmd(router, trafficCmd);
           const t = Array.isArray(res) ? (res[0] || {}) : (res || {});
           updated.push(t && (t['rx-bits-per-second'] !== undefined || t['tx-bits-per-second'] !== undefined) ? { ...i, ...t } : i);
         }
@@ -281,7 +308,7 @@ app.get('/api/routers/:id/stats', async (req, res) => {
         for (const ifaceName of candidates) {
           try {
             const cmd = `/interface/monitor-traffic\n=interface=${ifaceName}\n=once=`;
-            const res = await fetchApiData(router, cmd);
+            const res = await tryApiCmd(router, cmd);
             const t = Array.isArray(res) ? (res[0] || {}) : (res || {});
             rxBps = parseInt(t['rx-bits-per-second'] ?? '0') || rxBps;
             txBps = parseInt(t['tx-bits-per-second'] ?? '0') || txBps;
