@@ -46,6 +46,12 @@ export const addStoredRouter = (router: RouterDevice) => {
   setStoredRouters([...current, router]);
 };
 
+export const removeStoredRouter = (routerId: string) => {
+  const current = getStoredRouters();
+  const next = current.filter(r => r.id === undefined ? false : r.id !== routerId);
+  setStoredRouters(next);
+};
+
 // --- Auth Methods ---
 
 export const login = async (email: string, password: string): Promise<{ user: User, token: string }> => {

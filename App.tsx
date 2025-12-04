@@ -17,7 +17,7 @@ import {
   updateClients, 
   updateSystemStats
 } from './services/mockDataService';
-import { getStoredTenants, getStoredRouters, addStoredRouter, logout } from './services/authService';
+import { getStoredTenants, getStoredRouters, addStoredRouter, setStoredRouters, removeStoredRouter, logout } from './services/authService';
 import { apiService } from './services/apiService';
 
 const App: React.FC = () => {
@@ -197,6 +197,15 @@ const App: React.FC = () => {
     setSelectedRouterId(newRouter.id);
   };
 
+  const handleDeleteRouter = (routerId: string) => {
+    setRouters(prev => prev.filter(r => r.id !== routerId));
+    removeStoredRouter(routerId);
+    if (selectedRouterId === routerId) {
+      const remaining = routers.filter(r => r.id !== routerId);
+      setSelectedRouterId(remaining.length ? remaining[0].id : '');
+    }
+  };
+
   // --- Filtering Logic for Multi-Tenancy ---
 
   // Filter Tenants visible to current user
@@ -252,6 +261,7 @@ const App: React.FC = () => {
           <RouterManager 
             routers={visibleRouters} 
             onAddRouter={handleAddRouter} 
+            onDeleteRouter={handleDeleteRouter}
             tenantId={user.tenantId} 
           />
         );
