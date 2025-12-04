@@ -1,8 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 import { NetworkInterface, PPPoEClient, SystemStats } from "../types";
 
+// Declare process to avoid TypeScript errors if @types/node is missing, 
+// ensuring process.env.API_KEY access doesn't error.
+declare const process: { env: { API_KEY?: string } };
+
 const getAIClient = () => {
-  const apiKey = process.env.API_KEY;
+  // According to Google GenAI guidelines, use process.env.API_KEY exclusively.
+  const apiKey = process.env.API_KEY; 
+  
   if (!apiKey) {
     console.warn("API_KEY not found in environment variables. Gemini features may not work.");
     return null;

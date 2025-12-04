@@ -1,36 +1,39 @@
-# Deployment Guide: Network Graphing Tools
+# Deployment Guide: Network Graphing Tools (Default Nginx Config)
 
-This guide covers how to deploy the application on a Linux environment (Ubuntu, Debian, or Armbian on Orange Pi/Raspberry Pi) using Nginx as a reverse proxy.
+This guide explains how to deploy the application on Linux (Ubuntu/Armbian) by modifying the **default** Nginx configuration file.
 
 ## Prerequisites
 
-Ensure your system has the following installed:
-*   **Node.js** (v18 or higher)
-*   **npm** (usually comes with Node.js)
-*   **Nginx**
-*   **PM2** (Process Manager for Node.js)
+1.  **Update System & Install Tools**:
+    ```bash
+    sudo apt update && sudo apt upgrade -y
+    sudo apt install -y nodejs npm nginx git
+    
+    # Install PM2 (Process Manager)
+    sudo npm install -g pm2
+    ```
+
+---
+
+## 1. Get the Source Code
+
+Clone the project repository to your server:
 
 ```bash
-# Update system
-sudo apt update && sudo apt upgrade -y
-
-# Install Node.js (example for NodeSource setup)
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt install -y nodejs nginx
-
-# Install PM2 globally
-sudo npm install -g pm2
+cd ~
+git clone https://github.com/Djnirds1984/Network-Graphing-Tools-by-AJC.git
+cd Network-Graphing-Tools-by-AJC
 ```
 
 ---
 
-## 1. Backend Setup
+## 2. Backend Setup (API)
 
-The backend connects to MikroTik routers and serves the API.
+The backend runs on port 3001 and handles MikroTik connections.
 
-1.  Navigate to the backend directory:
+1.  Navigate to the backend folder:
     ```bash
-    cd /path/to/project/backend
+    cd backend
     ```
 
 2.  Install dependencies:
@@ -38,71 +41,85 @@ The backend connects to MikroTik routers and serves the API.
     npm install
     ```
 
-3.  Start the backend using PM2:
+3.  Start the server with PM2:
     ```bash
     pm2 start server.js --name "netgraph-api"
     pm2 save
     pm2 startup
     ```
-    *The backend will now run on `localhost:3001`.*
 
 ---
 
-## 2. Frontend Setup
+## 3. Frontend Setup (React App)
 
-The frontend needs to be built into static HTML/JS/CSS files.
+We will build the frontend and copy the files to the default Nginx web root (`/var/www/html`).
 
-1.  Navigate to the project root:
+1.  Navigate back to the project root:
     ```bash
-    cd /path/to/project
+    cd ..
     ```
 
-2.  Install dependencies:
+2.  **Configure API Key**:
+    Create a `.env` file for the build process (replacing `your_key_here` with your actual Gemini API Key):
+    ```bash
+    echo "VITE_API_KEY=your_key_here" > .env
+    ```
+
+3.  Install dependencies and Build:
     ```bash
     npm install
-    ```
-
-3.  Build the project:
-    ```bash
     npm run build
     ```
-    *This creates a `dist/` folder containing the production assets.*
 
-4.  Move the build artifacts to a standard web directory (optional but recommended):
+4.  **Deploy to Web Root**:
+    Remove default Nginx files and copy your build:
     ```bash
-    sudo mkdir -p /var/www/netgraph
-    sudo cp -r dist/* /var/www/netgraph/
-    sudo chown -R www-data:www-data /var/www/netgraph
+    sudo rm -rf /var/www/html/*
+    sudo cp -r dist/* /var/www/html/
+    
+    # Set permissions
+    sudo chown -R www-data:www-data /var/www/html
+    sudo chmod -R 755 /var/www/html
     ```
 
 ---
 
-## 3. Nginx Configuration
+## 4. Nginx Configuration (Default File)
 
-Configure Nginx to serve the frontend and proxy API requests to the backend.
+We will edit `/etc/nginx/sites-available/default` to serve the React app and proxy the API.
 
-1.  Create a new Nginx site configuration:
+1.  Open the default config:
     ```bash
-    sudo nano /etc/nginx/sites-available/netgraph
+    sudo nano /etc/nginx/sites-available/default
     ```
 
-2.  Paste the following configuration:
+2.  **Replace the entire file content** with the following configuration:
+
     ```nginx
     server {
-        listen 80;
-        server_name _;  # Or your domain name / IP
+        listen 80 default_server;
+        listen [::]:80 default_server;
 
-        root /var/www/netgraph;
-        index index.html;
+        # The root directory where we copied the 'dist' files
+        root /var/www/html;
 
-        # Serve Frontend
+        # Add index.html to the list
+        index index.html index.htm index.nginx-debian.html;
+
+        server_name _;
+
+        # 1. Frontend: Serve React App
         location / {
+            # This is crucial for React Router (Single Page Apps)
+            # If file doesn't exist, serve index.html
             try_files $uri $uri/ /index.html;
         }
 
-        # Proxy API Requests to Backend
+        # 2. Backend: Proxy API requests to Node.js
         location /api/ {
+            # Proxy to the PM2 process running on port 3001
             proxy_pass http://localhost:3001/api/;
+            
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection 'upgrade';
@@ -112,13 +129,9 @@ Configure Nginx to serve the frontend and proxy API requests to the backend.
     }
     ```
 
-3.  Enable the site:
-    ```bash
-    sudo ln -s /etc/nginx/sites-available/netgraph /etc/nginx/sites-enabled/
-    sudo rm /etc/nginx/sites-enabled/default  # Optional: Remove default if conflicting
-    ```
+3.  Save and Exit (`Ctrl+O`, `Enter`, `Ctrl+X`).
 
-4.  Test and restart Nginx:
+4.  Test and Restart Nginx:
     ```bash
     sudo nginx -t
     sudo systemctl restart nginx
@@ -126,26 +139,16 @@ Configure Nginx to serve the frontend and proxy API requests to the backend.
 
 ---
 
-## 4. Environment Variables
+## 5. Verification
 
-To use Gemini AI features, you need to provide the API Key during the build or runtime.
+1.  Open your browser and enter the IP address of your Orange Pi/Server.
+    *   Example: `http://192.168.1.100`
+2.  You should see the login screen.
+3.  Register a new account.
+4.  Add a router. The app will attempt to connect to the router via the backend proxy (`/api/...` -> `localhost:3001`).
 
-Create a `.env` file in the root directory **before building the frontend**:
+## Troubleshooting
 
-```env
-VITE_API_KEY=your_google_gemini_api_key
-```
-
-Then rebuild:
-```bash
-npm run build
-sudo cp -r dist/* /var/www/netgraph/
-```
-*(Note: Updated `App.tsx` or `geminiService` to use `import.meta.env.VITE_API_KEY` if using Vite, though `process.env` is polyfilled by some bundlers, Vite prefers `import.meta.env`.)*
-
-## 5. Usage
-
-Open your browser and navigate to `http://<your-orange-pi-ip>/`.
-
-*   **Frontend**: Loads from Nginx.
-*   **Backend**: API calls go to `/api/...`, which Nginx forwards to `localhost:3001`.
+*   **API Connection Failed**: Check if the backend is running: `pm2 status`.
+*   **404 on Refresh**: Ensure the `try_files $uri $uri/ /index.html;` line is correct in Nginx config.
+*   **Permission Denied**: Ensure `/var/www/html` is owned by `www-data` or readable by Nginx.
