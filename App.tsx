@@ -17,7 +17,7 @@ import {
   updateClients, 
   updateSystemStats
 } from './services/mockDataService';
-import { getStoredTenants, getStoredRouters, addStoredRouter, setStoredRouters, removeStoredRouter, logout } from './services/authService';
+import { getStoredTenants, getStoredRouters, addStoredRouter, removeStoredRouter, updateStoredRouter, logout } from './services/authService';
 import { apiService } from './services/apiService';
 
 const App: React.FC = () => {
@@ -197,6 +197,12 @@ const App: React.FC = () => {
     setSelectedRouterId(newRouter.id);
   };
 
+  const handleUpdateRouter = (updated: RouterDevice) => {
+    setRouters(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+    updateStoredRouter(updated);
+    apiService.addRouter(updated);
+  };
+
   const handleDeleteRouter = (routerId: string) => {
     setRouters(prev => prev.filter(r => r.id !== routerId));
     removeStoredRouter(routerId);
@@ -261,6 +267,7 @@ const App: React.FC = () => {
           <RouterManager 
             routers={visibleRouters} 
             onAddRouter={handleAddRouter} 
+            onUpdateRouter={handleUpdateRouter}
             onDeleteRouter={handleDeleteRouter}
             tenantId={user.tenantId} 
           />

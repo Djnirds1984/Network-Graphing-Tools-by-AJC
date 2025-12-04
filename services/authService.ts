@@ -48,6 +48,18 @@ export const addStoredRouter = (router: RouterDevice) => {
 
 export const removeStoredRouter = (routerId: string) => {
   const current = getStoredRouters();
+  const next = current.filter(r => r.id !== routerId);
+  setStoredRouters(next);
+};
+
+export const updateStoredRouter = (updated: RouterDevice) => {
+  const current = getStoredRouters();
+  const next = current.map(r => (r.id === updated.id ? updated : r));
+  setStoredRouters(next);
+};
+
+export const removeStoredRouter = (routerId: string) => {
+  const current = getStoredRouters();
   const next = current.filter(r => r.id === undefined ? false : r.id !== routerId);
   setStoredRouters(next);
 };

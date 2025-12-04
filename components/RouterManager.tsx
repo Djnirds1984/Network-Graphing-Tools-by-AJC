@@ -5,12 +5,15 @@ import { apiService } from '../services/apiService';
 interface RouterManagerProps {
   routers: RouterDevice[];
   onAddRouter: (router: RouterDevice) => void;
+  onUpdateRouter: (router: RouterDevice) => void;
   onDeleteRouter: (routerId: string) => void;
   tenantId: string;
 }
 
-const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, onDeleteRouter, tenantId }) => {
+const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, onUpdateRouter, onDeleteRouter, tenantId }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingRouterId, setEditingRouterId] = useState<string>('');
   
   // Form State
   const [name, setName] = useState('');
@@ -35,6 +38,8 @@ const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, onD
     setTestStatus('idle');
     setDetectedInfo(null);
     setErrorMessage('');
+    setIsEditing(false);
+    setEditingRouterId('');
   };
 
   const handleMethodChange = (newMethod: 'api' | 'rest') => {
@@ -82,6 +87,25 @@ const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, onD
     resetForm();
   };
 
+  const handleUpdate = () => {
+    const updated: RouterDevice = {
+      id: editingRouterId,
+      tenantId: tenantId,
+      name: name,
+      ip: ip,
+      model: detectedInfo?.model || 'Unknown',
+      version: detectedInfo?.version || 'ROS',
+      isOnline: true,
+      username,
+      password,
+      port,
+      method
+    };
+    onUpdateRouter(updated);
+    setIsModalOpen(false);
+    resetForm();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -90,7 +114,7 @@ const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, onD
           <p className="text-slate-400 text-sm">Manage MikroTik devices connected to this tenant.</p>
         </div>
         <button 
-          onClick={() => { resetForm(); setIsModalOpen(true); }}
+          onClick={() => { resetForm(); setIsEditing(false); setIsModalOpen(true); }}
           className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-medium shadow-lg shadow-cyan-900/20 flex items-center"
         >
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
@@ -130,7 +154,23 @@ const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, onD
                     )}
                   </td>
                   <td className="px-6 py-4 text-right space-x-3">
-                    <button className="text-slate-400 hover:text-cyan-400 transition-colors">Configure</button>
+                    <button 
+                      onClick={() => {
+                        const r = router;
+                        setIsEditing(true);
+                        setEditingRouterId(r.id);
+                        setName(r.name);
+                        setIp(r.ip);
+                        setUsername(r.username || 'admin');
+                        setPassword(r.password || '');
+                        setPort(r.port || (r.method === 'rest' ? '80' : '8728'));
+                        setMethod(r.method);
+                        setIsModalOpen(true);
+                      }}
+                      className="text-slate-400 hover:text-cyan-400 transition-colors"
+                    >
+                      Configure
+                    </button>
                     <button onClick={() => onDeleteRouter(router.id)} className="text-red-400 hover:text-red-300 transition-colors">Delete</button>
                   </td>
                 </tr>
@@ -239,20 +279,29 @@ const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, onD
                >
                  Cancel
                </button>
-               {testStatus !== 'success' ? (
-                 <button 
-                   onClick={handleTestConnection}
-                   disabled={isTesting || !ip}
-                   className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                 >
-                   Test Connection
-                 </button>
+               {!isEditing ? (
+                 testStatus !== 'success' ? (
+                   <button 
+                     onClick={handleTestConnection}
+                     disabled={isTesting || !ip}
+                     className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                   >
+                     Test Connection
+                   </button>
+                 ) : (
+                   <button 
+                     onClick={handleSave}
+                     className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-cyan-900/20"
+                   >
+                     Save & Connect
+                   </button>
+                 )
                ) : (
                  <button 
-                   onClick={handleSave}
+                   onClick={handleUpdate}
                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-cyan-900/20"
                  >
-                   Save & Connect
+                   Save Changes
                  </button>
                )}
             </div>
