@@ -15,6 +15,8 @@ app.use(bodyParser.json());
 // In-memory storage for router configurations (in a real app, use a DB)
 // We only store connection details, not the live stats.
 let routers = [];
+// Persist last byte counters per router/interface to compute rates if monitor-traffic is unavailable
+const lastCounters = {};
 
 // Ignore self-signed certs for MikroTik REST API
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
@@ -214,10 +216,31 @@ app.get('/api/routers/:id/stats', async (req, res) => {
 
     // 2. Interfaces
     const interfaces = (Array.isArray(interfacesRaw) ? interfacesRaw : []).map((iface, idx) => {
-        const rxBps = parseInt(iface['rx-bits-per-second'] ?? '0');
-        const txBps = parseInt(iface['tx-bits-per-second'] ?? '0');
+        let rxBps = parseInt(iface['rx-bits-per-second'] ?? '0');
+        let txBps = parseInt(iface['tx-bits-per-second'] ?? '0');
         const name = iface.name || iface['name'] || `if-${idx}`;
         const running = iface.running === 'true' || iface.running === true;
+
+        // Fallback: compute bps from byte counters over time if monitor-traffic is absent
+        const key = `${router.id}::${name}`;
+        const nowBytesRx = parseInt(iface['rx-byte'] ?? iface['rx-bytes'] ?? '0');
+        const nowBytesTx = parseInt(iface['tx-byte'] ?? iface['tx-bytes'] ?? '0');
+        const prev = lastCounters[key];
+        const nowTime = Date.now();
+        if ((!rxBps || !txBps) && prev && nowBytesRx && nowBytesTx) {
+          const dtMs = nowTime - prev.time;
+          if (dtMs > 0) {
+            const dRx = Math.max(0, nowBytesRx - prev.rx);
+            const dTx = Math.max(0, nowBytesTx - prev.tx);
+            rxBps = Math.floor((dRx * 8 * 1000) / dtMs);
+            txBps = Math.floor((dTx * 8 * 1000) / dtMs);
+          }
+        }
+        // Update counters store
+        if (nowBytesRx || nowBytesTx) {
+          lastCounters[key] = { rx: nowBytesRx, tx: nowBytesTx, time: nowTime };
+        }
+
         return {
           id: `${router.id}-if-${idx}`,
           routerId: router.id,
