@@ -269,15 +269,26 @@ app.get('/api/routers/:id/stats', async (req, res) => {
     // 3. PPPoE Clients with live rates
     const clientRates = {};
     try {
+      const ifaceNames = (interfacesRaw || []).map(i => i.name || '').filter(Boolean);
       for (const ppp of activePppRaw) {
-        const ifaceName = ppp.interface || `pppoe-${ppp.name}`;
-        const cmd = `/interface/monitor-traffic\n=interface=${ifaceName}\n=once=`;
-        const res = await fetchApiData(router, cmd);
-        const t = Array.isArray(res) ? (res[0] || {}) : (res || {});
-        clientRates[ppp.name] = {
-          rxBps: parseInt(t['rx-bits-per-second'] ?? '0'),
-          txBps: parseInt(t['tx-bits-per-second'] ?? '0')
-        };
+        const candidates = [];
+        if (ppp.interface) candidates.push(ppp.interface);
+        candidates.push(`pppoe-in-${ppp.name}`);
+        candidates.push(`pppoe-out-${ppp.name}`);
+        const foundByScan = ifaceNames.find(n => /pppoe/i.test(n) && n.toLowerCase().includes(String(ppp.name).toLowerCase()));
+        if (foundByScan) candidates.unshift(foundByScan);
+        let rxBps = 0, txBps = 0;
+        for (const ifaceName of candidates) {
+          try {
+            const cmd = `/interface/monitor-traffic\n=interface=${ifaceName}\n=once=`;
+            const res = await fetchApiData(router, cmd);
+            const t = Array.isArray(res) ? (res[0] || {}) : (res || {});
+            rxBps = parseInt(t['rx-bits-per-second'] ?? '0') || rxBps;
+            txBps = parseInt(t['tx-bits-per-second'] ?? '0') || txBps;
+            if (rxBps || txBps) break;
+          } catch (e) { /* try next candidate */ }
+        }
+        clientRates[ppp.name] = { rxBps, txBps };
       }
     } catch (e) {}
 
