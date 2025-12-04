@@ -1,5 +1,5 @@
 import { User, Tenant, RouterDevice } from '../types';
-import { createNewTenant } from './mockDataService';
+import { createNewTenant, createDefaultRouter } from './mockDataService';
 
 const USERS_KEY = 'netgraph_users';
 const TENANTS_KEY = 'netgraph_tenants';
@@ -66,7 +66,7 @@ export const login = async (email: string, password: string): Promise<{ user: Us
   throw new Error('Invalid email or password');
 };
 
-export const register = async (name: string, email: string, password: string, orgName: string): Promise<{ user: User, tenant: Tenant }> => {
+export const register = async (name: string, email: string, password: string, orgName: string): Promise<{ user: User, tenant: Tenant, router: RouterDevice }> => {
   await new Promise(resolve => setTimeout(resolve, 1000));
 
   const users = getUsers();
@@ -74,10 +74,17 @@ export const register = async (name: string, email: string, password: string, or
     throw new Error('User already exists');
   }
 
+  // 1. Create Tenant
   const newTenant = createNewTenant(orgName);
   const currentTenants = getStoredTenants();
   localStorage.setItem(TENANTS_KEY, JSON.stringify([...currentTenants, newTenant]));
 
+  // 2. Create Default Router for Tenant
+  const newRouter = createDefaultRouter(newTenant.id);
+  const currentRouters = getStoredRouters();
+  localStorage.setItem(ROUTERS_KEY, JSON.stringify([...currentRouters, newRouter]));
+
+  // 3. Create User
   const newUser: User = {
     id: `u-${Date.now()}`,
     email,
@@ -87,7 +94,7 @@ export const register = async (name: string, email: string, password: string, or
   };
   setUsers([...users, newUser]);
 
-  return { user: newUser, tenant: newTenant };
+  return { user: newUser, tenant: newTenant, router: newRouter };
 };
 
 export const logout = () => {
