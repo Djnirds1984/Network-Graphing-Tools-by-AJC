@@ -70,6 +70,26 @@ const fetchApiData = async (router, commandString) => {
   }
 };
 
+// Attempt legacy API resource print using common ports (8728, 8729)
+const tryApiResource = async (router) => {
+  const attempts = [];
+  const base = { ...router };
+  attempts.push(base);
+  if (String(base.port) !== '8729') attempts.push({ ...base, port: '8729' });
+  if (String(base.port) !== '8728') attempts.push({ ...base, port: '8728' });
+  let lastError;
+  for (const r of attempts) {
+    try {
+      const data = await fetchApiData(r, '/system/resource/print');
+      const resData = Array.isArray(data) ? (data[0] || {}) : (data || {});
+      return resData;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError || new Error('API connection failed');
+};
+
 // --- Helper: Normalize Interface Data ---
 const normalizeInterfaces = (routerId, rawData) => {
   return rawData.map((iface, idx) => ({
@@ -251,8 +271,7 @@ app.post('/api/test-connection', async (req, res) => {
        const resData = Array.isArray(data) ? (data[0] || {}) : (data || {});
        result = { model: resData['board-name'] || 'MikroTik', version: resData['version'] || 'ROS' };
     } else {
-       const data = await fetchApiData(tempRouter, '/system/resource/print');
-       const resData = (Array.isArray(data) ? data[0] : data) || {};
+       const resData = await tryApiResource(tempRouter);
        result = { model: resData['board-name'] || 'MikroTik', version: resData['version'] || 'ROS' };
     }
     res.json({ success: true, ...result });
