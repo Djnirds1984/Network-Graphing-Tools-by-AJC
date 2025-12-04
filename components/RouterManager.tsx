@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { RouterDevice } from '../types';
-import { testRouterConnection } from '../services/mockDataService';
+import { apiService } from '../services/apiService';
 
 interface RouterManagerProps {
   routers: RouterDevice[];
@@ -48,7 +48,7 @@ const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, ten
     setErrorMessage('');
     
     try {
-      const info = await testRouterConnection(ip, username, password, port, method);
+      const info = await apiService.testConnection({ ip, port, username, password, method });
       setDetectedInfo(info);
       setTestStatus('success');
     } catch (err: any) {
@@ -69,7 +69,11 @@ const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, ten
       ip: ip,
       model: detectedInfo.model,
       version: detectedInfo.version,
-      isOnline: true
+      isOnline: true,
+      username,
+      password,
+      port,
+      method
     };
 
     onAddRouter(newRouter);

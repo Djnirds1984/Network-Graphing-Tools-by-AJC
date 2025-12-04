@@ -20,6 +20,10 @@ export interface RouterDevice {
   model: string;
   version: string;
   isOnline: boolean;
+  username?: string;
+  password?: string;
+  port?: string;
+  method?: 'api' | 'rest';
 }
 
 export interface TrafficPoint {

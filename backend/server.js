@@ -39,13 +39,15 @@ const fetchRestData = async (router, endpoint) => {
 
 // --- Helper: Connect via Legacy API (ROS 6/7) using mikro-routeros ---
 const fetchApiData = async (router, commandString) => {
+  const apiPort = parseInt(router.port || '8728');
+  const useTls = apiPort === 8729;
   const client = new RouterOSClient({
     host: router.ip,
     user: router.username,
     password: router.password,
-    port: parseInt(router.port || 8728),
-    keepalive: false, // Close connection after command
-    tls: false // Assuming non-secure API port by default, usually 8729 is TLS
+    port: apiPort,
+    keepalive: false,
+    tls: useTls
   });
 
   try {
@@ -62,9 +64,9 @@ const fetchApiData = async (router, commandString) => {
     await client.close();
     return data;
   } catch (error) {
-    // Attempt to close if error occurs
     try { await client.close(); } catch (e) {}
-    throw new Error(`API Error: ${error.message}`);
+    const msg = (error && error.message) ? error.message : String(error);
+    throw new Error(`API Error: ${msg}`);
   }
 };
 
@@ -92,7 +94,16 @@ app.post('/api/routers', (req, res) => {
   const { id, tenantId, name, ip, username, password, method, port } = req.body;
   
   const existingIndex = routers.findIndex(r => r.id === id);
-  const routerConfig = { id, tenantId, name, ip, username, password, method, port };
+  const routerConfig = {
+    id,
+    tenantId,
+    name,
+    ip,
+    username: username || 'admin',
+    password: password || '',
+    method: method || 'api',
+    port: port || (method === 'rest' ? '80' : '8728')
+  };
   
   if (existingIndex >= 0) {
     routers[existingIndex] = routerConfig;
