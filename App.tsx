@@ -17,7 +17,7 @@ import {
   updateClients, 
   updateSystemStats
 } from './services/mockDataService';
-import { getStoredTenants, getStoredRouters, logout } from './services/authService';
+import { getStoredTenants, getStoredRouters, addStoredRouter, logout } from './services/authService';
 import { apiService } from './services/apiService';
 
 const App: React.FC = () => {
@@ -191,15 +191,9 @@ const App: React.FC = () => {
   };
 
   const handleAddRouter = (newRouter: RouterDevice) => {
-    // Update local state
     setRouters(prev => [...prev, newRouter]);
-    
-    // Register with Backend to start tracking
-    // We pass the config (which includes password in this simplified version) to the backend
-    // In a real app, this data is sent securely once.
+    addStoredRouter(newRouter);
     apiService.addRouter(newRouter);
-
-    // Optionally switch to the new router
     setSelectedRouterId(newRouter.id);
   };
 

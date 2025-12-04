@@ -37,6 +37,15 @@ export const getStoredRouters = (): RouterDevice[] => {
   return stored ? JSON.parse(stored) : [];
 };
 
+export const setStoredRouters = (routers: RouterDevice[]) => {
+  localStorage.setItem(ROUTERS_KEY, JSON.stringify(routers));
+};
+
+export const addStoredRouter = (router: RouterDevice) => {
+  const current = getStoredRouters();
+  setStoredRouters([...current, router]);
+};
+
 // --- Auth Methods ---
 
 export const login = async (email: string, password: string): Promise<{ user: User, token: string }> => {
