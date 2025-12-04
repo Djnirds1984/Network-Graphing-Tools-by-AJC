@@ -58,11 +58,7 @@ export const updateStoredRouter = (updated: RouterDevice) => {
   setStoredRouters(next);
 };
 
-export const removeStoredRouter = (routerId: string) => {
-  const current = getStoredRouters();
-  const next = current.filter(r => r.id === undefined ? false : r.id !== routerId);
-  setStoredRouters(next);
-};
+
 
 // --- Auth Methods ---
 
