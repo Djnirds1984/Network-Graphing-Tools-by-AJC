@@ -5,10 +5,11 @@ import { apiService } from '../services/apiService';
 interface RouterManagerProps {
   routers: RouterDevice[];
   onAddRouter: (router: RouterDevice) => void;
+  onDeleteRouter: (routerId: string) => void;
   tenantId: string;
 }
 
-const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, tenantId }) => {
+const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, onDeleteRouter, tenantId }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   // Form State
@@ -128,8 +129,9 @@ const RouterManager: React.FC<RouterManagerProps> = ({ routers, onAddRouter, ten
                       </span>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-6 py-4 text-right space-x-3">
                     <button className="text-slate-400 hover:text-cyan-400 transition-colors">Configure</button>
+                    <button onClick={() => onDeleteRouter(router.id)} className="text-red-400 hover:text-red-300 transition-colors">Delete</button>
                   </td>
                 </tr>
               ))}
