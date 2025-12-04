@@ -30,7 +30,7 @@ const fetchRestData = async (router, endpoint) => {
     const response = await axios.get(url, {
       auth: { username: router.username, password: router.password },
       httpsAgent: protocol === 'https' ? httpsAgent : undefined,
-      timeout: 5000
+      timeout: 8000
     });
     return response.data;
   } catch (error) {
@@ -294,18 +294,28 @@ app.get('/api/routers/:id/stats', async (req, res) => {
     });
 
     // 3. PPPoE Clients with live rates
+    const ifaceRateMap = {};
+    for (const i of interfacesRaw) {
+      const name = i.name;
+      const rxBps = parseInt(i['rx-bits-per-second'] ?? '0') || 0;
+      const txBps = parseInt(i['tx-bits-per-second'] ?? '0') || 0;
+      if (name) ifaceRateMap[name] = { rxBps, txBps };
+    }
+
     const clientRates = {};
     try {
       const ifaceNames = (interfacesRaw || []).map(i => i.name || '').filter(Boolean);
       for (const ppp of activePppRaw) {
         const candidates = [];
         if (ppp.interface) candidates.push(ppp.interface);
-        candidates.push(`pppoe-in-${ppp.name}`);
-        candidates.push(`pppoe-out-${ppp.name}`);
         const foundByScan = ifaceNames.find(n => /pppoe/i.test(n) && n.toLowerCase().includes(String(ppp.name).toLowerCase()));
         if (foundByScan) candidates.unshift(foundByScan);
+        candidates.push(`pppoe-${ppp.name}`);
+        candidates.push(`pppoe-in-${ppp.name}`);
+        candidates.push(`pppoe-out-${ppp.name}`);
         let rxBps = 0, txBps = 0;
         for (const ifaceName of candidates) {
+          if (ifaceRateMap[ifaceName]) { rxBps = ifaceRateMap[ifaceName].rxBps; txBps = ifaceRateMap[ifaceName].txBps; break; }
           try {
             const cmd = `/interface/monitor-traffic\n=interface=${ifaceName}\n=once=`;
             const res = await tryApiCmd(router, cmd);
