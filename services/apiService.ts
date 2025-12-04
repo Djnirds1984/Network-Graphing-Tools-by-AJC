@@ -1,8 +1,7 @@
 import { NetworkInterface, PPPoEClient, SystemStats, RouterDevice } from '../types';
 
-// Use relative URL so Nginx can proxy to localhost:3001
-// In dev, Vite proxy handles this. In prod, Nginx handles this.
-const API_BASE_URL = '/api';
+// Base URL: use env when available, else relative '/api' for Vite proxy
+const API_BASE_URL = (import.meta as any)?.env?.VITE_API_BASE_URL || '/api';
 
 export const apiService = {
   
