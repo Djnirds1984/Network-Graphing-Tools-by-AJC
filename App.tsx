@@ -6,7 +6,7 @@ import ClientList from './components/ClientList';
 import NetworkTopology from './components/NetworkTopology';
 import RouterManager from './components/RouterManager';
 import AuthPage from './components/AuthPage';
-import { AppView, NetworkInterface, PPPoEClient, SystemStats, Tenant, RouterDevice, User } from './types';
+import { AppView, NetworkInterface, PPPoEClient, SystemStats, Tenant, RouterDevice, User, TrafficPoint } from './types';
 import { 
   generateTenants,
   generateRouters,
@@ -18,6 +18,7 @@ import {
   updateSystemStats
 } from './services/mockDataService';
 import { getStoredTenants, getStoredRouters, logout } from './services/authService';
+import { apiService } from './services/apiService';
 
 const App: React.FC = () => {
   // --- Auth State ---
@@ -38,6 +39,10 @@ const App: React.FC = () => {
   const [clients, setClients] = useState<PPPoEClient[]>([]);
   const [sysStatsMap, setSysStatsMap] = useState<Record<string, SystemStats>>({});
 
+  // Flag to toggle between Mock and Real Backend
+  // In a real build, this might be an env var. For this hybrid app, we check if the router has credentials stored locally (simplified).
+  // For now, we assume if it's a "stored" router (id starts with 'r-'), we try the backend.
+  
   // 1. Initial Data Loading (Static Defaults + Stored User Data)
   useEffect(() => {
     const defaultTenants = generateTenants();
@@ -80,18 +85,79 @@ const App: React.FC = () => {
     }
   }, [user, routers, selectedRouterId]);
 
-  // 3. Simulation Loop
+  // 3. Helper to update history (Append new point to existing array)
+  const appendHistory = (currentHistory: TrafficPoint[], newTx: number, newRx: number): TrafficPoint[] => {
+     const now = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+     return [...currentHistory, { timestamp: now, tx: newTx, rx: newRx }].slice(-30);
+  };
+
+  // 4. Data Refresh Loop (Handles both Mock and Real)
   useEffect(() => {
     if (!user) return; // Only run sim if logged in
 
-    const intervalId = setInterval(() => {
-      setInterfaces(prev => updateInterfaces(prev));
-      setClients(prev => updateClients(prev));
-      setSysStatsMap(prev => updateSystemStats(prev));
-    }, 1500);
+    const fetchData = async () => {
+      // Check if selected router is a "Mock" router (ids like 'r1', 'r2') or a "Real" router (ids like 'r-17...')
+      const isRealRouter = selectedRouterId && selectedRouterId.startsWith('r-');
+      
+      if (isRealRouter) {
+        // --- REAL BACKEND MODE ---
+        try {
+          const liveData = await apiService.getLiveStats(selectedRouterId);
+          
+          if (liveData) {
+            // Update System Stats
+            setSysStatsMap(prev => ({
+              ...prev,
+              [selectedRouterId]: liveData.sysStats
+            }));
+
+            // Update Interfaces (Merge with existing to keep history)
+            setInterfaces(prevInterfaces => {
+              const routerInterfaces = prevInterfaces.filter(i => i.routerId !== selectedRouterId);
+              const currentRouterInterfaces = prevInterfaces.filter(i => i.routerId === selectedRouterId);
+              
+              const updated = liveData.interfaces.map(newIface => {
+                 const existing = currentRouterInterfaces.find(e => e.name === newIface.name);
+                 return {
+                   ...newIface,
+                   history: appendHistory(existing?.history || [], newIface.currentTx, newIface.currentRx)
+                 };
+              });
+              return [...routerInterfaces, ...updated];
+            });
+
+            // Update Clients
+            setClients(prevClients => {
+              const routerClients = prevClients.filter(c => c.routerId !== selectedRouterId);
+              // For clients, simple replace usually works, but we can try to preserve history if IDs match
+              const updated = liveData.clients.map(newClient => {
+                 const existing = prevClients.find(c => c.username === newClient.username && c.routerId === selectedRouterId);
+                 return {
+                   ...newClient,
+                   history: appendHistory(existing?.history || [], newClient.currentTx, newClient.currentRx)
+                 };
+              });
+              return [...routerClients, ...updated];
+            });
+          }
+        } catch (err) {
+          console.warn("Failed to fetch from backend, make sure server.js is running.");
+        }
+
+      } else {
+        // --- MOCK MODE (Demo) ---
+        setInterfaces(prev => updateInterfaces(prev));
+        setClients(prev => updateClients(prev));
+        setSysStatsMap(prev => updateSystemStats(prev));
+      }
+    };
+
+    // Run every 2 seconds for API (less aggressive than mock) or 1.5s for mock
+    const intervalTime = selectedRouterId.startsWith('r-') ? 2000 : 1500;
+    const intervalId = setInterval(fetchData, intervalTime);
 
     return () => clearInterval(intervalId);
-  }, [user]);
+  }, [user, selectedRouterId]);
 
   // --- Handlers ---
   
@@ -106,14 +172,13 @@ const App: React.FC = () => {
     setTenants(updatedTenants);
     setRouters(updatedRouters);
     
-    // Also generate initial mock data for this new router
-    const newInterfaces = generateInitialInterfaces([newRouter]);
-    const newClients = generateInitialClients([newRouter]); // Likely empty or few default
-    const newStats = generateSystemStats([newRouter]);
+    // Register the router with the backend if possible (blind fire)
+    // Note: In a real app, 'register' would happen on the backend, not client-side local storage.
+    apiService.addRouter(newRouter);
 
-    setInterfaces(prev => [...prev, ...newInterfaces]);
-    setClients(prev => [...prev, ...newClients]);
-    setSysStatsMap(prev => ({...prev, ...newStats}));
+    // Initial placeholder data
+    const initialStats = generateSystemStats([newRouter]);
+    setSysStatsMap(prev => ({...prev, ...initialStats}));
     
     // Auto-select the new router
     setSelectedRouterId(newRouter.id);
@@ -129,14 +194,10 @@ const App: React.FC = () => {
     // Update local state
     setRouters(prev => [...prev, newRouter]);
     
-    // Generate initial metrics for the new device
-    const newInterfaces = generateInitialInterfaces([newRouter]);
-    const newClients = generateInitialClients([newRouter]);
-    const newStats = generateSystemStats([newRouter]);
-
-    setInterfaces(prev => [...prev, ...newInterfaces]);
-    setClients(prev => [...prev, ...newClients]);
-    setSysStatsMap(prev => ({...prev, ...newStats}));
+    // Register with Backend to start tracking
+    // We pass the config (which includes password in this simplified version) to the backend
+    // In a real app, this data is sent securely once.
+    apiService.addRouter(newRouter);
 
     // Optionally switch to the new router
     setSelectedRouterId(newRouter.id);
