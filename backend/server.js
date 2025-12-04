@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const axios = require('axios');
-const MikroNode = require('mikronode');
+const { RouterOSClient } = require('mikro-routeros');
 const https = require('https');
 
 const app = express();
@@ -37,31 +37,35 @@ const fetchRestData = async (router, endpoint) => {
   }
 };
 
-// --- Helper: Connect via Legacy API (ROS 6/7) ---
-const fetchApiData = (router, command) => {
-  return new Promise((resolve, reject) => {
-    const device = new MikroNode(router.ip, router.port || 8728);
-    
-    device.connect().then(([login]) => {
-      return login(router.username, router.password);
-    }).then(function(conn) {
-      const channel = conn.openChannel("data_req");
-      channel.write(command);
-      
-      channel.on('done', function(data) {
-        channel.close();
-        conn.close();
-        resolve(data.data); // mikronode returns object with data array
-      });
-
-      channel.on('error', function(err) {
-        conn.close();
-        reject(err);
-      });
-    }).catch(function(err) {
-      reject(err);
-    });
+// --- Helper: Connect via Legacy API (ROS 6/7) using mikro-routeros ---
+const fetchApiData = async (router, commandString) => {
+  const client = new RouterOSClient({
+    host: router.ip,
+    user: router.username,
+    password: router.password,
+    port: parseInt(router.port || 8728),
+    keepalive: false, // Close connection after command
+    tls: false // Assuming non-secure API port by default, usually 8729 is TLS
   });
+
+  try {
+    await client.connect();
+    
+    // mikro-routeros typically expects command and args as an array
+    // Our app sends commands joined by \n (e.g. "/interface/monitor-traffic\n=interface=ether1")
+    // We split them to create the protocol array
+    const commandArray = commandString.split('\n');
+    
+    // Execute command
+    const data = await client.write(commandArray);
+    
+    await client.close();
+    return data;
+  } catch (error) {
+    // Attempt to close if error occurs
+    try { await client.close(); } catch (e) {}
+    throw new Error(`API Error: ${error.message}`);
+  }
 };
 
 // --- Helper: Normalize Interface Data ---
@@ -131,8 +135,10 @@ app.get('/api/routers/:id/stats', async (req, res) => {
     else {
       // Sequential or Parallel Promise
       interfacesRaw = await fetchApiData(router, '/interface/print');
+      
       const resArr = await fetchApiData(router, '/system/resource/print');
       resourceRaw = resArr[0] || {};
+      
       activePppRaw = await fetchApiData(router, '/ppp/active/print');
       
       // Get Traffic Monitor (Snapshot)
@@ -144,7 +150,10 @@ app.get('/api/routers/:id/stats', async (req, res) => {
       // Getting names
       const names = interfacesRaw.map(i => i.name).join(',');
       try {
-        const trafficRaw = await fetchApiData(router, `/interface/monitor-traffic\n=interface=${names}\n=once=`);
+        // Construct the array of arguments for monitor-traffic
+        const trafficCmd = `/interface/monitor-traffic\n=interface=${names}\n=once=`;
+        const trafficRaw = await fetchApiData(router, trafficCmd);
+        
         // Merge traffic data
         interfacesRaw = interfacesRaw.map(i => {
            const t = trafficRaw.find(tr => tr.name === i.name);
