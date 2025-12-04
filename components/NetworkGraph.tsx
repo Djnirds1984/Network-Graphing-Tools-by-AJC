@@ -74,7 +74,8 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({
               strokeWidth={2}
               fillOpacity={1} 
               fill={`url(#gradientTx-${title})`} 
-              isAnimationActive={false}
+              isAnimationActive={true}
+              animationDuration={400}
             />
             <Area 
               type="monotone" 
@@ -83,7 +84,8 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({
               strokeWidth={2}
               fillOpacity={1} 
               fill={`url(#gradientRx-${title})`}
-              isAnimationActive={false}
+              isAnimationActive={true}
+              animationDuration={400}
             />
           </AreaChart>
         </ResponsiveContainer>

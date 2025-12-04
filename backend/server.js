@@ -161,27 +161,16 @@ app.get('/api/routers/:id/stats', async (req, res) => {
       
       activePppRaw = await fetchApiData(router, '/ppp/active/print');
       
-      // Get Traffic Monitor (Snapshot)
-      // Getting traffic via API requires a continuous stream or a specific 'monitor-traffic' command
-      // which is complex for a simple poll. We will rely on TX/RX byte counters from /interface/print 
-      // and calculate rate on frontend, OR fetch monitor-traffic for active interfaces.
-      // For this implementation, we will fetch monitor-traffic for ALL interfaces once.
-      
-      // Getting names
-      const names = interfacesRaw.map(i => i.name).join(',');
+      // Get Traffic Monitor (Snapshot) per interface
       try {
-        // Construct the array of arguments for monitor-traffic
-        const trafficCmd = `/interface/monitor-traffic\n=interface=${names}\n=once=`;
-        const trafficRaw = await fetchApiData(router, trafficCmd);
-        
-        // Merge traffic data
-        interfacesRaw = interfacesRaw.map(i => {
-           const t = trafficRaw.find(tr => tr.name === i.name);
-           if (t) {
-             return { ...i, ...t }; // Adds 'rx-bits-per-second', 'tx-bits-per-second'
-           }
-           return i;
-        });
+        const updated = [];
+        for (const i of interfacesRaw) {
+          const trafficCmd = `/interface/monitor-traffic\n=interface=${i.name}\n=once=yes`;
+          const res = await fetchApiData(router, trafficCmd);
+          const t = Array.isArray(res) ? (res[0] || {}) : (res || {});
+          updated.push(t && (t['rx-bits-per-second'] !== undefined || t['tx-bits-per-second'] !== undefined) ? { ...i, ...t } : i);
+        }
+        interfacesRaw = updated;
       } catch (e) {
         console.log("Traffic monitor failed, falling back to counters", e);
       }
